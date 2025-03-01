@@ -1,4 +1,4 @@
-import { OfferCallDto } from '@api/dto/call.dto';
+// import { OfferCallDto } from '@api/dto/call.dto';
 import {
   ArchiveChatDto,
   BlockUserDto,
@@ -130,7 +130,6 @@ import { readFileSync } from 'fs';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import NodeCache from 'node-cache';
-import { release } from 'os';
 import { join } from 'path';
 import P from 'pino';
 import qrcode, { QRCodeToDataURLOptions } from 'qrcode';
@@ -459,7 +458,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       this.logger.info(`Phone number: ${number}`);
     } else {
-      const browser: WABrowserDescription = [session.CLIENT, session.NAME, release()];
+      const browser: WABrowserDescription = [session.CLIENT, session.NAME, session.VERSION];
       browserOptions = { browser };
 
       this.logger.info(`Browser: ${browser}`);
@@ -1581,18 +1580,17 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
-  public async offerCall({ number, isVideo, callDuration }: OfferCallDto) {
-    const jid = createJid(number);
+  // public async offerCall({ number, isVideo, callDuration }: OfferCallDto) {
+  //   // const jid = createJid(number);
 
-    try {
-      const call = await this.client.offerCall(jid, isVideo);
-      setTimeout(() => this.client.terminateCall(call.id, call.to), callDuration * 1000);
-
-      return call;
-    } catch (error) {
-      return error;
-    }
-  }
+  //   try {
+  //     throw new Error('Not implemented');
+  //     // const call = await this.client.offerCall(jid, isVideo);
+  //     // setTimeout(() => this.client.terminateCall(call.id, call.to), callDuration * 1000);
+  //   } catch (error) {
+  //     return error;
+  //   }
+  // }
 
   private async sendMessage(
     sender: string,
