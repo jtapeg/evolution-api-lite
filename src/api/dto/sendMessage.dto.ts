@@ -9,6 +9,7 @@ export class Options {
   delay?: number;
   presence?: WAPresence;
   quoted?: Quoted;
+  forwarding?: proto.IWebMessageInfo;
   linkPreview?: boolean;
   encoding?: boolean;
   mentionsEveryOne?: boolean;
@@ -165,4 +166,9 @@ export class SendContactDto extends Metadata {
 export class SendReactionDto {
   key: proto.IMessageKey;
   reaction: string;
+}
+
+export class SendForwardingDto {
+  number: string;
+  forwarding: proto.IWebMessageInfo;
 }

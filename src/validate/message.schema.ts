@@ -92,6 +92,16 @@ export const textMessageSchema: JSONSchema7 = {
   required: ['number', 'text'],
 };
 
+export const forwardingMessageSchema: JSONSchema7 = {
+  $id: v4(),
+  type: 'object',
+  properties: {
+    number: { ...numberDefinition },
+    forwarding: { type: 'object' },
+  },
+  required: ['number', 'forwarding'],
+};
+
 export const mediaMessageSchema: JSONSchema7 = {
   $id: v4(),
   type: 'object',
