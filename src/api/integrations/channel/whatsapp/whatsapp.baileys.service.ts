@@ -1,8 +1,9 @@
-import { OfferCallDto } from '@api/dto/call.dto';
+// import { OfferCallDto } from '@api/dto/call.dto';
 import {
   ArchiveChatDto,
   BlockUserDto,
   DeleteMessage,
+  DownloadMediaMessageDto,
   getBase64FromMediaMessageDto,
   LastMessage,
   MarkChatUnreadDto,
@@ -39,6 +40,7 @@ import {
   SendAudioDto,
   SendButtonsDto,
   SendContactDto,
+  SendForwardingDto,
   SendListDto,
   SendLocationDto,
   SendMediaDto,
@@ -77,6 +79,7 @@ import { Instance } from '@prisma/client';
 import { createJid } from '@utils/createJid';
 import { makeProxyAgent } from '@utils/makeProxyAgent';
 import { getOnWhatsappCache, saveOnWhatsappCache } from '@utils/onWhatsappCache';
+import { readStreamWithTimeout } from '@utils/readStreamWithTimeout';
 import { status } from '@utils/renderStatus';
 import useMultiFileAuthStatePrisma from '@utils/use-multi-file-auth-state-prisma';
 import { AuthStateProvider } from '@utils/use-multi-file-auth-state-provider-files';
@@ -92,6 +95,7 @@ import makeWASocket, {
   Contact,
   delay,
   DisconnectReason,
+  downloadContentFromMessage,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   generateWAMessageFromContent,
@@ -114,6 +118,7 @@ import makeWASocket, {
   WABrowserDescription,
   WAMediaUpload,
   WAMessage,
+  WAMessageContent,
   WAMessageUpdate,
   WAPresence,
   WASocket,
@@ -127,7 +132,6 @@ import { readFileSync } from 'fs';
 import Long from 'long';
 import mimeTypes from 'mime-types';
 import NodeCache from 'node-cache';
-import { release } from 'os';
 import { join } from 'path';
 import P from 'pino';
 import qrcode, { QRCodeToDataURLOptions } from 'qrcode';
@@ -456,7 +460,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
       this.logger.info(`Phone number: ${number}`);
     } else {
-      const browser: WABrowserDescription = [session.CLIENT, session.NAME, release()];
+      const browser: WABrowserDescription = [session.CLIENT, session.NAME, session.VERSION];
       browserOptions = { browser };
 
       this.logger.info(`Browser: ${browser}`);
@@ -840,6 +844,7 @@ export class BaileysStartupService extends ChannelStartupService {
         }
 
         const messagesRaw: any[] = [];
+        const messagesRawWebhook: any[] = [];
 
         for (const m of messages) {
           if (!m.message || !m.key || !m.messageTimestamp) {
@@ -850,10 +855,13 @@ export class BaileysStartupService extends ChannelStartupService {
             m.messageTimestamp = m.messageTimestamp?.toNumber();
           }
 
-          messagesRaw.push(this.prepareMessage(m));
+          const messageRaw = this.prepareMessage(m);
+          messagesRaw.push(messageRaw);
+          messageRaw.originalMessage = m;
+          messagesRawWebhook.push(messageRaw);
         }
 
-        this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRaw]);
+        this.sendDataWebhook(Events.MESSAGES_SET, [...messagesRawWebhook]);
 
         if (this.configService.get<Database>('DATABASE').SAVE_DATA.HISTORIC) {
           await this.prismaRepository.message.createMany({
@@ -1081,6 +1089,8 @@ export class BaileysStartupService extends ChannelStartupService {
           }
 
           this.logger.log(messageRaw);
+
+          messageRaw.message.originalMessage = received;
 
           this.sendDataWebhook(Events.MESSAGES_UPSERT, messageRaw);
 
@@ -1578,18 +1588,17 @@ export class BaileysStartupService extends ChannelStartupService {
     }
   }
 
-  public async offerCall({ number, isVideo, callDuration }: OfferCallDto) {
-    const jid = createJid(number);
+  // public async offerCall({ number, isVideo, callDuration }: OfferCallDto) {
+  //   // const jid = createJid(number);
 
-    try {
-      const call = await this.client.offerCall(jid, isVideo);
-      setTimeout(() => this.client.terminateCall(call.id, call.to), callDuration * 1000);
-
-      return call;
-    } catch (error) {
-      return error;
-    }
-  }
+  //   try {
+  //     throw new Error('Not implemented');
+  //     // const call = await this.client.offerCall(jid, isVideo);
+  //     // setTimeout(() => this.client.terminateCall(call.id, call.to), callDuration * 1000);
+  //   } catch (error) {
+  //     return error;
+  //   }
+  // }
 
   private async sendMessage(
     sender: string,
@@ -1599,12 +1608,13 @@ export class BaileysStartupService extends ChannelStartupService {
     quoted: any,
     messageId?: string,
     ephemeralExpiration?: number,
-    // participants?: GroupParticipant[],
+    forwarding?: WAMessage,
   ) {
     sender = sender.toLowerCase();
 
     const option: any = {
       quoted,
+      forwarding,
     };
 
     if (isJidGroup(sender)) {
@@ -1619,6 +1629,50 @@ export class BaileysStartupService extends ChannelStartupService {
 
     if (messageId) option.messageId = messageId;
     else option.messageId = '3EB0' + randomBytes(18).toString('hex').toUpperCase();
+
+    if (forwarding) {
+      const msg = forwarding?.message
+        ? forwarding
+        : ((await this.getMessage(forwarding.key, true)) as proto.IWebMessageInfo);
+      const contentType = getContentType(msg.message);
+      const originalMessageContent: any = msg.message[contentType!] as WAMessageContent;
+      const forwardMsg: proto.IWebMessageInfo = {
+        key: {
+          remoteJid: isJidUser(sender) ? sender : undefined,
+          fromMe: false,
+          id: '',
+        },
+        message: {
+          [contentType!]: {
+            ...originalMessageContent,
+            contextInfo: {
+              forwardingScore: 1,
+              isForwarded: true,
+            },
+          },
+        },
+        messageTimestamp: Math.floor(Date.now() / 1000),
+      };
+      const m = generateWAMessageFromContent(sender, forwardMsg.message!, {
+        timestamp: new Date(),
+        userJid: this.instance.wuid,
+        messageId,
+        quoted,
+      });
+      const id = await this.client.relayMessage(sender, forwardMsg.message!, { messageId });
+      m.key = {
+        id: id,
+        remoteJid: sender,
+        participant: isJidUser(sender) ? sender : undefined,
+        fromMe: true,
+      };
+      for (const [key, value] of Object.entries(m)) {
+        if (!value || (isArray(value) && value.length) === 0) {
+          delete m[key];
+        }
+      }
+      return m;
+    }
 
     if (message['viewOnceMessage']) {
       const m = generateWAMessageFromContent(sender, message, {
@@ -1861,10 +1915,19 @@ export class BaileysStartupService extends ChannelStartupService {
           quoted,
           null,
           group?.ephemeralDuration,
-          // group?.participants,
+          options?.forwarding,
         );
       } else {
-        messageSent = await this.sendMessage(sender, message, mentions, linkPreview, quoted);
+        messageSent = await this.sendMessage(
+          sender,
+          message,
+          mentions,
+          linkPreview,
+          quoted,
+          undefined,
+          undefined,
+          options?.forwarding,
+        );
       }
 
       if (Long.isLong(messageSent?.messageTimestamp)) {
@@ -1960,6 +2023,8 @@ export class BaileysStartupService extends ChannelStartupService {
 
       this.logger.log(messageRaw);
 
+      messageRaw.message.originalMessage = messageSent;
+
       this.sendDataWebhook(Events.SEND_MESSAGE, messageRaw);
 
       return messageRaw;
@@ -2053,6 +2118,16 @@ export class BaileysStartupService extends ChannelStartupService {
         linkPreview: data?.linkPreview,
         mentionsEveryOne: data?.mentionsEveryOne,
         mentioned: data?.mentioned,
+      },
+    );
+  }
+
+  public async forwardingMessage(data: SendForwardingDto) {
+    return await this.sendMessageWithTyping(
+      data.number,
+      {},
+      {
+        forwarding: data.forwarding,
       },
     );
   }
@@ -3130,6 +3205,28 @@ export class BaileysStartupService extends ChannelStartupService {
       };
     } catch (error) {
       throw new InternalServerErrorException('Error updating privacy settings', error.toString());
+    }
+  }
+
+  public async downloadMediaMessage(downloadMedia: DownloadMediaMessageDto) {
+    try {
+      const media = await downloadContentFromMessage(
+        {
+          ...downloadMedia.downloadableMessage,
+        },
+        downloadMedia.type,
+      );
+
+      const buffer = await readStreamWithTimeout(media, downloadMedia.timeout);
+
+      if (downloadMedia.returnType === 'base64') {
+        const base64Data = buffer.toString('base64');
+        return base64Data;
+      }
+
+      return buffer;
+    } catch (error) {
+      throw new InternalServerErrorException('Error downloading media message', error.toString());
     }
   }
 

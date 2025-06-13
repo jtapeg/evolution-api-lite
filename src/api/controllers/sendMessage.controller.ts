@@ -3,6 +3,7 @@ import {
   SendAudioDto,
   SendButtonsDto,
   SendContactDto,
+  SendForwardingDto,
   SendListDto,
   SendLocationDto,
   SendMediaDto,
@@ -27,6 +28,10 @@ export class SendMessageController {
 
   public async sendText({ instanceName }: InstanceDto, data: SendTextDto) {
     return await this.waMonitor.waInstances[instanceName].textMessage(data);
+  }
+
+  public async sendForwarding({ instanceName }: InstanceDto, data: SendForwardingDto) {
+    return await this.waMonitor.waInstances[instanceName].forwardingMessage(data);
   }
 
   public async sendMedia({ instanceName }: InstanceDto, data: SendMediaDto, file?: any) {

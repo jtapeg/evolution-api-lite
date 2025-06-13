@@ -3,6 +3,7 @@ import {
   SendAudioDto,
   SendButtonsDto,
   SendContactDto,
+  SendForwardingDto,
   SendListDto,
   SendLocationDto,
   SendMediaDto,
@@ -19,6 +20,7 @@ import {
   audioMessageSchema,
   buttonsMessageSchema,
   contactMessageSchema,
+  forwardingMessageSchema,
   listMessageSchema,
   locationMessageSchema,
   mediaMessageSchema,
@@ -57,6 +59,16 @@ export class MessageRouter extends RouterBroker {
           schema: textMessageSchema,
           ClassRef: SendTextDto,
           execute: (instance, data) => sendMessageController.sendText(instance, data),
+        });
+
+        return res.status(HttpStatus.CREATED).json(response);
+      })
+      .post(this.routerPath('sendForwarding'), ...guards, async (req, res) => {
+        const response = await this.dataValidate<SendForwardingDto>({
+          request: req,
+          schema: forwardingMessageSchema,
+          ClassRef: SendForwardingDto,
+          execute: (instance, data) => sendMessageController.sendForwarding(instance, data),
         });
 
         return res.status(HttpStatus.CREATED).json(response);

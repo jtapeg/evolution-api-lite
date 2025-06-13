@@ -1,5 +1,6 @@
 import { isBooleanString } from 'class-validator';
 import dotenv from 'dotenv';
+import { release } from 'os';
 
 dotenv.config();
 
@@ -499,7 +500,7 @@ export class ConfigService {
       CONFIG_SESSION_PHONE: {
         CLIENT: process.env?.CONFIG_SESSION_PHONE_CLIENT || 'Evolution API',
         NAME: process.env?.CONFIG_SESSION_PHONE_NAME || 'Chrome',
-        VERSION: process.env?.CONFIG_SESSION_PHONE_VERSION || null,
+        VERSION: process.env?.CONFIG_SESSION_PHONE_VERSION || release(),
       },
       QRCODE: {
         LIMIT: Number.parseInt(process.env.QRCODE_LIMIT) || 30,
