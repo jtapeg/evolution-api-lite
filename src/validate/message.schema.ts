@@ -88,6 +88,7 @@ export const textMessageSchema: JSONSchema7 = {
         description: '"mentioned" must be an array of numeric strings',
       },
     },
+    edit: { type: 'object' },
   },
   required: ['number', 'text'],
 };

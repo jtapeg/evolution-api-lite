@@ -15,6 +15,7 @@ export class Options {
   mentionsEveryOne?: boolean;
   mentioned?: string[];
   webhookUrl?: string;
+  edit?: proto.IMessageKey;
 }
 
 export class MediaMessage {
@@ -45,6 +46,7 @@ export class Metadata {
   mentionsEveryOne?: boolean;
   mentioned?: string[];
   encoding?: boolean;
+  edit?: proto.IMessageKey;
 }
 
 export class SendTextDto extends Metadata {

@@ -1609,6 +1609,7 @@ export class BaileysStartupService extends ChannelStartupService {
     messageId?: string,
     ephemeralExpiration?: number,
     forwarding?: WAMessage,
+    edit?: proto.IMessageKey,
   ) {
     sender = sender.toLowerCase();
 
@@ -1672,6 +1673,17 @@ export class BaileysStartupService extends ChannelStartupService {
         }
       }
       return m;
+    }
+
+    if (edit) {
+      return await this.client.sendMessage(
+        sender,
+        {
+          text: message['conversation'],
+          edit: edit,
+        } as unknown as AnyMessageContent,
+        option as unknown as MiscMessageGenerationOptions,
+      );
     }
 
     if (message['viewOnceMessage']) {
@@ -1916,6 +1928,7 @@ export class BaileysStartupService extends ChannelStartupService {
           null,
           group?.ephemeralDuration,
           options?.forwarding,
+          options?.edit,
         );
       } else {
         messageSent = await this.sendMessage(
@@ -1927,6 +1940,7 @@ export class BaileysStartupService extends ChannelStartupService {
           undefined,
           undefined,
           options?.forwarding,
+          options?.edit,
         );
       }
 
@@ -2118,6 +2132,7 @@ export class BaileysStartupService extends ChannelStartupService {
         linkPreview: data?.linkPreview,
         mentionsEveryOne: data?.mentionsEveryOne,
         mentioned: data?.mentioned,
+        edit: data?.edit,
       },
     );
   }
