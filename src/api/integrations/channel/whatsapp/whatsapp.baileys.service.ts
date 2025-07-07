@@ -79,7 +79,7 @@ import { Instance } from '@prisma/client';
 import { createJid } from '@utils/createJid';
 import { makeProxyAgent } from '@utils/makeProxyAgent';
 import { getOnWhatsappCache, saveOnWhatsappCache } from '@utils/onWhatsappCache';
-import { readStreamWithTimeout } from '@utils/readStreamWithTimeout';
+// import { readStreamWithTimeout } from '@utils/readStreamWithTimeout';
 import { status } from '@utils/renderStatus';
 import useMultiFileAuthStatePrisma from '@utils/use-multi-file-auth-state-prisma';
 import { AuthStateProvider } from '@utils/use-multi-file-auth-state-provider-files';
@@ -95,7 +95,7 @@ import makeWASocket, {
   Contact,
   delay,
   DisconnectReason,
-  downloadContentFromMessage,
+  // downloadContentFromMessage,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   generateWAMessageFromContent,
@@ -3225,14 +3225,15 @@ export class BaileysStartupService extends ChannelStartupService {
 
   public async downloadMediaMessage(downloadMedia: DownloadMediaMessageDto) {
     try {
-      const media = await downloadContentFromMessage(
+      const buffer = await downloadMediaMessage(
+        { key: downloadMedia.key, message: downloadMedia.message },
+        'buffer',
+        {},
         {
-          ...downloadMedia.downloadableMessage,
+          logger: P({ level: 'error' }) as any,
+          reuploadRequest: this.client.updateMediaMessage,
         },
-        downloadMedia.type,
       );
-
-      const buffer = await readStreamWithTimeout(media, downloadMedia.timeout);
 
       if (downloadMedia.returnType === 'base64') {
         const base64Data = buffer.toString('base64');

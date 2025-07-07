@@ -1,6 +1,4 @@
 import {
-  DownloadableMessage,
-  MediaType,
   proto,
   WAPresence,
   WAPrivacyGroupAddValue,
@@ -97,9 +95,8 @@ export class PrivacySettingDto {
 }
 
 export class DownloadMediaMessageDto {
-  downloadableMessage: DownloadableMessage;
-  type: MediaType;
-  timeout?: number;
+  key: proto.IMessageKey;
+  message: proto.IMessage;
   returnType?: 'base64' | 'buffer' = 'buffer';
 }
 
