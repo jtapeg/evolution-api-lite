@@ -583,7 +583,6 @@ export class BaileysStartupService extends ChannelStartupService {
     this.eventHandler();
 
     this.client.ws.on('CB:call', (packet) => {
-      console.log('CB:call', packet);
       const payload = {
         event: 'CB:call',
         packet: packet,
@@ -592,7 +591,6 @@ export class BaileysStartupService extends ChannelStartupService {
     });
 
     this.client.ws.on('CB:ack,class:call', (packet) => {
-      console.log('CB:ack,class:call', packet);
       const payload = {
         event: 'CB:ack,class:call',
         packet: packet,
@@ -2813,11 +2811,7 @@ export class BaileysStartupService extends ChannelStartupService {
       groups: { number: string; jid: string }[];
       broadcast: { number: string; jid: string }[];
       users: { number: string; jid: string; name?: string }[];
-    } = {
-      groups: [],
-      broadcast: [],
-      users: [],
-    };
+    } = { groups: [], broadcast: [], users: [] };
 
     data.numbers.forEach((number) => {
       const jid = createJid(number);
@@ -2842,101 +2836,131 @@ export class BaileysStartupService extends ChannelStartupService {
         const group = await this.findGroup({ groupJid: jid }, 'inner');
 
         if (!group) {
-          new OnWhatsAppDto(jid, false, number);
+          return new OnWhatsAppDto(jid, false, number);
         }
 
-        return new OnWhatsAppDto(group.id, !!group?.id, number, group?.subject);
+        return new OnWhatsAppDto(group.id, true, number, group?.subject);
       }),
     );
     onWhatsapp.push(...groups);
 
     // USERS
     const contacts: any[] = await this.prismaRepository.contact.findMany({
-      where: {
-        instanceId: this.instanceId,
-        remoteJid: {
-          in: jids.users.map(({ jid }) => jid),
-        },
-      },
+      where: { instanceId: this.instanceId, remoteJid: { in: jids.users.map(({ jid }) => jid) } },
     });
 
-    const numbersToVerify = jids.users.map(({ jid }) => jid.replace('+', ''));
+    // Separate @lid numbers from normal numbers
+    const lidUsers = jids.users.filter(({ jid }) => jid.includes('@lid'));
+    const normalUsers = jids.users.filter(({ jid }) => !jid.includes('@lid'));
 
-    const cachedNumbers = await getOnWhatsappCache(numbersToVerify);
-    const filteredNumbers = numbersToVerify.filter(
-      (jid) => !cachedNumbers.some((cached) => cached.jidOptions.includes(jid)),
-    );
+    // For normal numbers, use traditional Baileys verification
+    let normalVerifiedUsers: OnWhatsAppDto[] = [];
+    if (normalUsers.length > 0) {
+      const numbersToVerify = normalUsers.map(({ jid }) => jid.replace('+', ''));
+      const cachedNumbers = await getOnWhatsappCache(numbersToVerify);
+      const filteredNumbers = numbersToVerify.filter(
+        (jid) => !cachedNumbers.some((cached) => cached.jidOptions.includes(jid)),
+      );
 
-    const verify = await this.client.onWhatsApp(...filteredNumbers);
-    const users: OnWhatsAppDto[] = await Promise.all(
-      jids.users.map(async (user) => {
-        let numberVerified: (typeof verify)[0] | null = null;
+      const verify = await this.client.onWhatsApp(...filteredNumbers);
+      normalVerifiedUsers = await Promise.all(
+        normalUsers.map(async (user) => {
+          let numberVerified: (typeof verify)[0] | null = null;
 
-        const cached = cachedNumbers.find((cached) => cached.jidOptions.includes(user.jid.replace('+', '')));
-        if (cached) {
-          return {
-            exists: true,
-            jid: cached.remoteJid,
-            name: contacts.find((c) => c.remoteJid === cached.remoteJid)?.pushName,
-            number: user.number,
-          };
-        }
-
-        // Brazilian numbers
-        if (user.number.startsWith('55')) {
-          const numberWithDigit =
-            user.number.slice(4, 5) === '9' && user.number.length === 13
-              ? user.number
-              : `${user.number.slice(0, 4)}9${user.number.slice(4)}`;
-          const numberWithoutDigit =
-            user.number.length === 12 ? user.number : user.number.slice(0, 4) + user.number.slice(5);
-
-          numberVerified = verify.find(
-            (v) => v.jid === `${numberWithDigit}@s.whatsapp.net` || v.jid === `${numberWithoutDigit}@s.whatsapp.net`,
-          );
-        }
-
-        // Mexican/Argentina numbers
-        // Ref: https://faq.whatsapp.com/1294841057948784
-        if (!numberVerified && (user.number.startsWith('52') || user.number.startsWith('54'))) {
-          let prefix = '';
-          if (user.number.startsWith('52')) {
-            prefix = '';
-          }
-          if (user.number.startsWith('54')) {
-            prefix = '9';
+          const cached = cachedNumbers.find((cached) => cached.jidOptions.includes(user.jid.replace('+', '')));
+          if (cached) {
+            return new OnWhatsAppDto(
+              cached.remoteJid,
+              true,
+              user.number,
+              contacts.find((c) => c.remoteJid === cached.remoteJid)?.pushName,
+              cached.lid || (cached.remoteJid.includes('@lid') ? cached.remoteJid.split('@')[1] : undefined),
+            );
           }
 
-          const numberWithDigit =
-            user.number.slice(2, 3) === prefix && user.number.length === 13
-              ? user.number
-              : `${user.number.slice(0, 2)}${prefix}${user.number.slice(2)}`;
-          const numberWithoutDigit =
-            user.number.length === 12 ? user.number : user.number.slice(0, 2) + user.number.slice(3);
+          // Brazilian numbers
+          if (user.number.startsWith('55')) {
+            const numberWithDigit =
+              user.number.slice(4, 5) === '9' && user.number.length === 13
+                ? user.number
+                : `${user.number.slice(0, 4)}9${user.number.slice(4)}`;
+            const numberWithoutDigit =
+              user.number.length === 12 ? user.number : user.number.slice(0, 4) + user.number.slice(5);
 
-          numberVerified = verify.find(
-            (v) => v.jid === `${numberWithDigit}@s.whatsapp.net` || v.jid === `${numberWithoutDigit}@s.whatsapp.net`,
+            numberVerified = verify.find(
+              (v) => v.jid === `${numberWithDigit}@s.whatsapp.net` || v.jid === `${numberWithoutDigit}@s.whatsapp.net`,
+            );
+          }
+
+          // Mexican/Argentina numbers
+          // Ref: https://faq.whatsapp.com/1294841057948784
+          if (!numberVerified && (user.number.startsWith('52') || user.number.startsWith('54'))) {
+            let prefix = '';
+            if (user.number.startsWith('52')) {
+              prefix = '1';
+            }
+            if (user.number.startsWith('54')) {
+              prefix = '9';
+            }
+
+            const numberWithDigit =
+              user.number.slice(2, 3) === prefix && user.number.length === 13
+                ? user.number
+                : `${user.number.slice(0, 2)}${prefix}${user.number.slice(2)}`;
+            const numberWithoutDigit =
+              user.number.length === 12 ? user.number : user.number.slice(0, 2) + user.number.slice(3);
+
+            numberVerified = verify.find(
+              (v) => v.jid === `${numberWithDigit}@s.whatsapp.net` || v.jid === `${numberWithoutDigit}@s.whatsapp.net`,
+            );
+          }
+
+          if (!numberVerified) {
+            numberVerified = verify.find((v) => v.jid === user.jid);
+          }
+
+          const numberJid = numberVerified?.jid || user.jid;
+          const lid =
+            typeof numberVerified?.lid === 'string'
+              ? numberVerified.lid
+              : numberJid.includes('@lid')
+                ? numberJid.split('@')[1]
+                : undefined;
+          return new OnWhatsAppDto(
+            numberJid,
+            !!numberVerified?.exists,
+            user.number,
+            contacts.find((c) => c.remoteJid === numberJid)?.pushName,
+            lid,
           );
-        }
+        }),
+      );
+    }
 
-        if (!numberVerified) {
-          numberVerified = verify.find((v) => v.jid === user.jid);
-        }
+    // For @lid numbers, always consider them as valid
+    const lidVerifiedUsers: OnWhatsAppDto[] = lidUsers.map((user) => {
+      return new OnWhatsAppDto(
+        user.jid,
+        true,
+        user.number,
+        contacts.find((c) => c.remoteJid === user.jid)?.pushName,
+        user.jid.split('@')[1],
+      );
+    });
 
-        const numberJid = numberVerified?.jid || user.jid;
+    // Combine results
+    onWhatsapp.push(...normalVerifiedUsers, ...lidVerifiedUsers);
 
-        return {
-          exists: !!numberVerified?.exists,
-          jid: numberJid,
-          name: contacts.find((c) => c.remoteJid === numberJid)?.pushName,
-          number: user.number,
-        };
-      }),
+    // Save to cache only valid numbers
+    await saveOnWhatsappCache(
+      onWhatsapp
+        .filter((user) => user.exists)
+        .map((user) => ({
+          remoteJid: user.jid,
+          jidOptions: user.jid.replace('+', ''),
+          lid: user.lid,
+        })),
     );
-
-    await saveOnWhatsappCache(users.filter((user) => user.exists).map((user) => ({ remoteJid: user.jid })));
-
-    onWhatsapp.push(...users);
 
     return onWhatsapp;
   }
@@ -3488,7 +3512,6 @@ export class BaileysStartupService extends ChannelStartupService {
 
     if ((cacheConf?.REDIS?.ENABLED && cacheConf?.REDIS?.URI !== '') || cacheConf?.LOCAL?.ENABLED) {
       if (await groupMetadataCache?.has(groupJid)) {
-        console.log(`Cache request for group: ${groupJid}`);
         const meta = await groupMetadataCache.get(groupJid);
 
         if (Date.now() - meta.timestamp > 3600000) {
@@ -3498,7 +3521,6 @@ export class BaileysStartupService extends ChannelStartupService {
         return meta.data;
       }
 
-      console.log(`Cache request for group: ${groupJid} - not found`);
       return await this.updateGroupMetadataCache(groupJid);
     }
 
@@ -3984,7 +4006,6 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async baileysSendNode(stanza: any) {
-    console.log('stanza', JSON.stringify(stanza));
     const response = await this.client.sendNode(stanza);
 
     return response;

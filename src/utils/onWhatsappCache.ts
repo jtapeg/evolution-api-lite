@@ -75,6 +75,7 @@ export async function getOnWhatsappCache(remoteJids: string[]) {
     remoteJid: string;
     number: string;
     jidOptions: string[];
+    lid?: string;
   }[] = [];
 
   if (configService.get<Database>('DATABASE').SAVE_DATA.IS_ON_WHATSAPP) {
