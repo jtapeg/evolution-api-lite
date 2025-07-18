@@ -521,8 +521,10 @@ export class BaileysStartupService extends ChannelStartupService {
       }
     }
 
-    const logger = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./baileys-logs.txt'));
-    logger.level = this.logBaileys;
+    const logger = P(
+      { timestamp: () => `,"time":"${new Date().toJSON()}"`, level: this.logBaileys },
+      P.destination('/evolution/logs/baileys-logs.txt'),
+    );
 
     const socketConfig: UserFacingSocketConfig = {
       ...options,
@@ -531,7 +533,7 @@ export class BaileysStartupService extends ChannelStartupService {
       printQRInTerminal: false,
       auth: {
         creds: this.instance.authState.state.creds,
-        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, P({ level: 'error' }) as any),
+        keys: makeCacheableSignalKeyStore(this.instance.authState.state.keys, logger),
       },
       msgRetryCounterCache: this.msgRetryCounterCache,
       generateHighQualityLinkPreview: true,
