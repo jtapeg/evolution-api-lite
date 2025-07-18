@@ -521,10 +521,13 @@ export class BaileysStartupService extends ChannelStartupService {
       }
     }
 
+    const logger = P({ timestamp: () => `,"time":"${new Date().toJSON()}"` }, P.destination('./baileys-logs.txt'));
+    logger.level = this.logBaileys;
+
     const socketConfig: UserFacingSocketConfig = {
       ...options,
       version,
-      logger: P({ level: this.logBaileys }),
+      logger: logger,
       printQRInTerminal: false,
       auth: {
         creds: this.instance.authState.state.creds,
