@@ -528,7 +528,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
     const socketConfig: UserFacingSocketConfig = {
       ...options,
-      version,
+      version: [2, 3000, 1027335933],
       logger: logger,
       printQRInTerminal: false,
       auth: {
